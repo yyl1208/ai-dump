@@ -375,6 +375,16 @@ const Platform = (function () {
     return false;
   }
 
+  // 每帧开头重置变换：设计坐标 → 画布物理像素。
+  // 画布尺寸是按窗口算出来的（比如 780x1388），绘制用的却是设计坐标（750x1334），
+  // 不做这层缩放的话，右边和底部会差出几十像素永远清不到，
+  // 表现就是"画面边上留着上一帧的弹道"。
+  // 用 setTransform 而不是 scale：它顺带把上一帧残留的位移/缩放也清干净。
+  function beginFrame(surface) {
+    const s = surface.dpr;
+    surface.ctx.setTransform(s, 0, 0, s, 0, 0);
+  }
+
   return {
     env: env,
     isMini: isMini,
@@ -384,6 +394,7 @@ const Platform = (function () {
     font: font,
     store: store,
     createSurface: createSurface,
+    beginFrame: beginFrame,
     bindInput: bindInput,
     tapApi: tapApi,
     onKey: onKey,

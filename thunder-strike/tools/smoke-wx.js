@@ -33,15 +33,27 @@ const vibrates = [];
 const shareImgs = [];
 const drawnText = [];
 
+// 主画布要跟踪变换：得算出 fillRect 最终落在哪些物理像素上
 function makeCtx(record) {
-  return new Proxy({}, {
-    get(t, k) {
-      if (k === 'createLinearGradient') return () => ({ addColorStop() {} });
-      if (k === 'measureText') return (s) => ({ width: String(s).length * 12 });
-      if (k === 'fillText') return (s) => { if (record) drawnText.push(String(s)); };
-      if (k in t) return t[k];
-      return () => {};
+  const log = [];
+  let m = { a: 1, d: 1, e: 0, f: 0 };
+  const stack = [];
+  const base = {
+    __log: log,
+    setTransform(a, b, c, d, e, f) { m = { a: a, d: d, e: e, f: f }; log.push({ op: 'st' }); },
+    save() { stack.push({ a: m.a, d: m.d, e: m.e, f: m.f }); },
+    restore() { if (stack.length) m = stack.pop(); },
+    translate(x, y) { m.e += m.a * x; m.f += m.d * y; log.push({ op: 'tr' }); },
+    scale(x, y) { m.a *= x; m.d *= y; },
+    fillRect(x, y, w, h) {
+      if (record) log.push({ op: 'fr', x: m.a * x + m.e, y: m.d * y + m.f, w: m.a * w, h: m.d * h });
     },
+    createLinearGradient: function () { return { addColorStop: function () {} }; },
+    measureText: function (s) { return { width: String(s).length * 12 }; },
+    fillText: function (s) { if (record) drawnText.push(String(s)); }
+  };
+  return new Proxy(base, {
+    get(t, k) { return k in t ? t[k] : function () {}; },
     set(t, k, v) { t[k] = v; return true; }
   });
 }
@@ -50,6 +62,7 @@ const canvases = [];
 function makeCanvas(record) {
   const c = { width: 0, height: 0 };
   const cx = makeCtx(record);
+  c.__ctx = cx;
   c.getContext = () => cx;
   c.toTempFilePathSync = (o) => {
     shareImgs.push({ w: o && o.width, h: o && o.height });
@@ -379,5 +392,30 @@ pump(2);
 assert.strictEqual(app.game.player.bombs, 0, '没雷也放出去了？');
 assert.strictEqual(app.game.dead, false, '没雷轻点不该把游戏搞崩');
 ok('轻点清屏', '点空处扣一颗 · 拖动不算 · 圆钮只放一颗 · 点「开始」不白放 · 取消与没雷时都安全');
+
+// ---------------------------------------------------------
+// 13. 清屏必须盖满整块画布（跑构建产物里的真实一帧）
+//     画布尺寸按窗口算（如 780x1388），绘制却用设计坐标（750x1334），
+//     缺了 beginFrame 那层缩放，右边和底部就永远清不到，边缘会留上一帧的弹道。
+// ---------------------------------------------------------
+{
+  const main = canvases[0];
+  const log = main.__ctx.__log;
+  log.length = 0;
+  pump(1);
+  const fills = log.filter(function (o) {
+    return o.op === 'fr' && o.w >= app.view.w * 0.9 && o.h >= app.view.h * 0.9;
+  });
+  assert(fills.length > 0, '真实一帧里没有全屏填充，清屏可能被删了');
+  const b = fills[0];
+  assert(b.x <= 0.5 && b.y <= 0.5,
+    '清屏左上角没对齐画布原点，实际 (' + b.x.toFixed(1) + ', ' + b.y.toFixed(1) + ')');
+  assert(b.x + b.w >= main.width - 0.5,
+    '清屏右侧差 ' + (main.width - (b.x + b.w)).toFixed(1) + 'px 没盖住（画布宽 ' + main.width + '），右边会留弹道残影');
+  assert(b.y + b.h >= main.height - 0.5,
+    '清屏底部差 ' + (main.height - (b.y + b.h)).toFixed(1) + 'px 没盖住（画布高 ' + main.height + '），底部会留弹道残影');
+  ok('清屏覆盖', '画布 ' + main.width + 'x' + main.height + ' · 设计 ' + app.view.w + 'x' +
+    Math.round(app.view.h) + ' 经 ' + app.surface.dpr.toFixed(3) + ' 倍铺满');
+}
 
 console.log('\nWX ALL PASS（' + pass + ' 组）');

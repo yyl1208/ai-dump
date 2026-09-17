@@ -841,11 +841,14 @@ class GameScene {
     const view = this.view;
     const dt = this._bgDt || 16;
 
+    // 背景兼作清屏，必须写在抖动的 translate 之前：
+    // 一旦被位移带偏，震动那几帧画布边缘就盖不满，会露出上一帧的弹道残影。
+    Draw.background(ctx, view, this.stars, dt);
+
     ctx.save();
     if (this.shake > 0.5) {
       ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
     }
-    Draw.background(ctx, view, this.stars, dt);
 
     if (showWorld) {
       Draw.powerups(ctx, this.loot);

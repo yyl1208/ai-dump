@@ -1236,4 +1236,104 @@ console.log('14c) 掉落规则 OK — 威胁 scout %s / hive %s，硬怪偏 W、
     '拖动/长按/多指/系统打断都不触发 · 圆钮与暂停钮已排除', lim, tmax);
 }
 
+// ==========================================================
+// 15. 清屏必须盖满整块画布
+//     画布物理尺寸是按窗口算的（780x1388），绘制用的却是设计坐标（750x1334），
+//     两者差的那几十像素如果没被缩放变换铺满，边缘就永远清不掉，
+//     表现就是"画面边上留着上一帧的弹道"。
+// ==========================================================
+{
+  // 带变换跟踪的 ctx：只关心 fillRect 最终落在哪些物理像素上
+  function spyCtx() {
+    let m = { a: 1, d: 1, e: 0, f: 0 };
+    const stack = [];
+    const log = [];
+    const base = {
+      __log: log,
+      setTransform(a, b, c, d, e, f) { m = { a: a, d: d, e: e, f: f }; log.push({ op: 'st' }); },
+      save() { stack.push({ a: m.a, d: m.d, e: m.e, f: m.f }); },
+      restore() { if (stack.length) m = stack.pop(); },
+      translate(x, y) { m.e += m.a * x; m.f += m.d * y; log.push({ op: 'tr', x: x, y: y }); },
+      scale(x, y) { m.a *= x; m.d *= y; },
+      fillRect(x, y, w, h) {
+        log.push({ op: 'fr', x: m.a * x + m.e, y: m.d * y + m.f, w: m.a * w, h: m.d * h });
+      },
+      createLinearGradient: function () { return { addColorStop: function () {} }; },
+      measureText: function (s) { return { width: String(s).length * 12 }; }
+    };
+    return new Proxy(base, {
+      get: function (t, k) { return k in t ? t[k] : function () {}; },
+      set: function (t, k, v) { t[k] = v; return true; }
+    });
+  }
+
+  const cw = surface.canvas.width;
+  const ch = surface.canvas.height;
+
+  // 全屏填充 = 宽接近设计宽、高接近视口高（背景 / 结算遮罩都算）
+  function bgFills(log) {
+    return log.filter(function (o) {
+      return o.op === 'fr' && o.w >= view.w * 0.9 && o.h >= view.h * 0.9;
+    });
+  }
+
+  function renderOnce(shake) {
+    const g = new T.GameScene(view, input);
+    g.reset();
+    g.shake = shake;
+    const spy = spyCtx();
+    const real = surface.ctx;
+    surface.ctx = spy;                    // 让 Platform.beginFrame 写到 spy 上
+    try {
+      T.Platform.beginFrame(surface);     // 生产路径：boot 每帧第一件事
+      g.render(spy, true);
+    } finally {
+      surface.ctx = real;
+    }
+    return { log: spy.__log, g: g };
+  }
+
+  // 15a 无抖动：背景必须整块盖住画布，一条边都不能少
+  {
+    const r = renderOnce(0);
+    const fills = bgFills(r.log);
+    assert(fills.length > 0, '一帧里没找到全屏填充，清屏可能被删了');
+    const b = fills[0];
+    assert(b.x <= 0.5 && b.y <= 0.5,
+      '清屏左上角没对齐画布原点，实际 (' + b.x.toFixed(1) + ', ' + b.y.toFixed(1) + ')');
+    assert(b.x + b.w >= cw - 0.5,
+      '清屏右侧差 ' + (cw - (b.x + b.w)).toFixed(1) + 'px 没盖住（画布宽 ' + cw + '），右边会留弹道残影');
+    assert(b.y + b.h >= ch - 0.5,
+      '清屏底部差 ' + (ch - (b.y + b.h)).toFixed(1) + 'px 没盖住（画布高 ' + ch + '），底部会留弹道残影');
+  }
+
+  // 15b 受击抖动：背景不能被 translate 带偏，否则震动那几帧边缘照样残留
+  {
+    const r = renderOnce(26);            // shake 上限见 game.js（大爆炸时 26）
+    const b = bgFills(r.log)[0];
+    assert(b, '抖动时没有全屏填充');
+    assert(b.x <= 0.5 && b.y <= 0.5,
+      '抖动的 translate 把清屏带偏了，起点 (' + b.x.toFixed(1) + ', ' + b.y.toFixed(1) + ')');
+    assert(b.x + b.w >= cw - 0.5 && b.y + b.h >= ch - 0.5,
+      '抖动时清屏没盖满画布，边缘会残留上一帧');
+    const tr = r.log.filter(function (o) { return o.op === 'tr'; }).length;
+    assert(tr >= 1, '抖动时应该有一次 translate，否则屏幕震动就失效了');
+  }
+
+  // 15c 顺序：清屏必须发生在抖动的 translate 之前
+  {
+    const r = renderOnce(26);
+    const iBg = r.log.findIndex(function (o) {
+      return o.op === 'fr' && o.w >= view.w * 0.9 && o.h >= view.h * 0.9;
+    });
+    const iTr = r.log.findIndex(function (o) { return o.op === 'tr'; });
+    assert(iBg >= 0 && iTr >= 0, '缺少清屏或抖动位移');
+    assert(iBg < iTr,
+      '清屏必须写在抖动的 translate 之前（bg#' + iBg + ' vs tr#' + iTr + '），否则背景跟着抖、边缘露残影');
+  }
+
+  console.log('15) 清屏覆盖 OK — 画布 %dx%d · 设计坐标 %dx%d 经 %s 倍铺满 · 抖动时同样铺满',
+    cw, ch, view.w, Math.round(view.h), surface.dpr.toFixed(3));
+}
+
 console.log('\nALL PASS');

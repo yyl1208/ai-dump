@@ -106,6 +106,8 @@ function boot(opts) {
   }
 
   const loop = new GameLoop(function (dt) {
+    Platform.beginFrame(surface);   // 设计坐标 → 画布像素，顺带清掉上一帧的变换残留
+
     if (state === 'notice') {
       noticeT -= dt;
       if (noticeT <= 0) state = 'menu';

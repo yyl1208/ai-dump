@@ -81,7 +81,35 @@ const MUTATIONS = [
     name: '弹幕墙缺口缩到 1 格（玩家钻不过去）',
     from: 'bossWall:     { count: 20, gap: 3, speed: 300, r: 16 }',
     to: 'bossWall:     { count: 20, gap: 1, speed: 300, r: 16 }'
-  }
+  },
+  {
+    file: 'src/platform.js', suite: 'smoke.js',
+    name: 'beginFrame 不做缩放（画布边缘清不到，留弹道残影）',
+    from: 'surface.ctx.setTransform(s, 0, 0, s, 0, 0);',
+    to: 'surface.ctx.setTransform(1, 0, 0, 1, 0, 0);'
+  },
+  {
+    file: 'src/game.js', suite: 'smoke.js',
+    name: '清屏挪到抖动位移之后（震动那几帧边缘露残影）',
+    from: `    Draw.background(ctx, view, this.stars, dt);
+
+    ctx.save();
+    if (this.shake > 0.5) {
+      ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+    }`,
+    to: `    ctx.save();
+    if (this.shake > 0.5) {
+      ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+    }
+    Draw.background(ctx, view, this.stars, dt);`
+  },
+  {
+    file: 'src/boot.js', suite: 'smoke-wx.js',
+    name: '主循环忘了调 beginFrame（真机整帧都不缩放）',
+    from: '    Platform.beginFrame(surface);',
+    to: '    // Platform.beginFrame(surface);'
+  },
+
 ];
 
 let caught = 0, restored = true;
