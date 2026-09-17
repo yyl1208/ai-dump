@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>雷霆战机 · 调试壳</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #05060f;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  }
+  #stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    background: #05060f;
+    touch-action: none;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.7);
+  }
+  #hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 10px;
+    text-align: center;
+    color: #565d80;
+    font: 12px/1.6 system-ui, sans-serif;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="game"></canvas></div>
+<div id="hint">web 调试壳（产物是 dist/wx）· 拖动操控 · 自动开火 · 轻点屏幕空处放炸弹（或按空格 / 点右下圆钮）· P 暂停 · R 重开</div>
+
+<script src="src/config.js"></script>
+<script src="src/platform.js"></script>
+<script src="src/core.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/draw.js"></script>
+<script src="src/entities.js"></script>
+<script src="src/game.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/boot.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
